@@ -1,7 +1,9 @@
 package twitchbot;
 
-abstract class ClientCommand
+abstract class ClientCommand(fromServer: Server, fromChannel: Channel, fromUser: String)
 
-case class Connect(server: Server) extends ClientCommand
-  
-case class Join(server: Server, channel: String) extends ClientCommand
+case class Connect(fromServer: Server, fromChannel: Channel, fromUser: String, connectTo: Server)
+  extends ClientCommand(fromServer, fromChannel, fromUser: String)
+
+case class Join(fromServer: Server, fromChannel: Channel, fromUser: String, join: Channel)
+  extends ClientCommand(fromServer, fromChannel, fromUser)

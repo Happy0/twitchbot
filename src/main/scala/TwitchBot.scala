@@ -2,18 +2,14 @@ package twitchbot;
 import akka.actor.ActorSystem
 import akka.actor.Props
 
-case class TwitchBot(username: String,
-  server: String,
-  port: Int,
-  chan: String) {
+case class TwitchBot(
+  servers: List[Server]) {
 
   val system = ActorSystem("twitchbot")
-  
-  val ircClient = system.actorOf(Props(new IrcClient(system)))
-  
-  ircClient ! Connect(Server(server,server, port, List(chan), username))
-  
-  val twitchActor = ???
+
+  val ircManager = system.actorOf(Props(new IRCManager(servers)))
+
+  val twitchManager = ???
 
 }
 
@@ -21,14 +17,14 @@ object TwitchBot {
   //@TODO: Check for invalid hostname/IP. Persist the configuration.
 
   def main(args: Array[String]) {
-    val username = args.find(str => str.startsWith("nick=")).fold("[Reu]TwitchBot")(a => a.dropWhile(_ == ' ').drop(5))
-    val server = args.find(str => str.startsWith("server=")).fold("irc.quakenet.org")(a => a.dropWhile(_ == ' ').drop(7))
-    val port = toInt(args.find(str => str.startsWith("port=")).fold("6667")(a => a.dropWhile(_ == ' ').drop(5)))
-    val chan = args.find(str => str.startsWith("chan=")).fold("#redditeux")(a => a.dropWhile(_ == ' ').drop(5))
+    val username = args.find(str => str.startsWith("nick=")).fold("[Reu]TwitchBot")(a => a.drop(5))
+    val server = args.find(str => str.startsWith("server=")).fold("irc.quakenet.org")(a => a.drop(7))
+    val port = toInt(args.find(str => str.startsWith("port=")).fold("6667")(a => a.drop(5)))
+    val chan = args.find(str => str.startsWith("chan=")).fold("#redditeux")(a => a.drop(5))
 
     validateInput(username, server, port, chan) match {
       case None =>
-        val bot = TwitchBot(username, server, port getOrElse 6667, chan)
+        val bot = TwitchBot(List(Server(server, server, port getOrElse 6667, List(Channel(chan, List.empty[String])), username)))
       case Some(str) =>
         println(str + ", exitting.")
         System.exit(1)

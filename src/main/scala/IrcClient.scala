@@ -1,17 +1,15 @@
 package twitchbot;
-
 import akka.actor.Actor
-import akka.actor.IOManager
-import akka.actor.ActorSystem
 import akka.actor.IO
+import akka.actor.IOManager
 
-class IrcClient(actorSystem: ActorSystem) extends Actor {
 
-  //@TODO: State for list of servers, handle read (Iteratee?)
+
+class IRCClient(server: Server) extends Actor {
+  
+  val ioManager = IOManager(context.system)
   
   def receive = {
-    
-    case Connect(server) => IOManager(actorSystem).connect(server.address, server.port)
 
     case IO.Connected(socket, address) =>
       println("Successfully connected to " + address)
@@ -23,7 +21,5 @@ class IrcClient(actorSystem: ActorSystem) extends Actor {
       println("Received incoming data from socket")
 
   }
+
 }
-
-
-
