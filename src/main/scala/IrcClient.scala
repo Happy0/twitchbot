@@ -3,12 +3,12 @@ import akka.actor.Actor
 import akka.actor.IO
 import akka.actor.IOManager
 
+class IRCClient(server: Server, ircManager: IRCManager) extends Actor {
 
-
-class IRCClient(server: Server) extends Actor {
-  
   val ioManager = IOManager(context.system)
-  
+
+  val socket = ioManager.connect(server.address, server.port)
+
   def receive = {
 
     case IO.Connected(socket, address) =>
