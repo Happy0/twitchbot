@@ -3,16 +3,39 @@ package twitchbot;
 import akka.actor.Actor
 import akka.actor.IOManager
 import akka.actor.ActorSystem
+import akka.actor.FSM
+import akka.actor.Props
+import akka.actor.ActorRef
 
-class IRCManager(servers: List[Server]) extends Actor {
+// Commands
+case object Initialise
+case class JoinChannel(server: Server, channel: Channel)
 
-  val ioManager = IOManager(context.system)
+sealed trait State
+case object Uninitialised extends State
+case object Active extends State
+case object Full extends State
 
-  //@TODO: State for list of servers, handle read (Iteratee?)
-  def receive = {
-    case _ => ???
+sealed trait Data
+case object Empty extends Data
+case class ServerHandlers(serverList: Map[String, ActorRef]) extends Data
+
+class IRCManager(servers: List[Server]) extends Actor with FSM[State, Data] {
+
+  startWith(Uninitialised, Empty)
+
+  when(Uninitialised) {
+    case Event(Initialise, Empty) =>
+      println ("Initialising!")
+      val initialised = servers.map(server => server.servername -> context.actorOf(Props(new IRCClient(server,this)), name = server.servername))
+      goto(Active) using ServerHandlers(initialised.toMap)
   }
 
+  when(Active) {
+    case Event(JoinChannel(server, channel), handlers: ServerHandlers) =>
+      // Placeholder
+      goto(Active) using handlers
+  }
 }
 
 
