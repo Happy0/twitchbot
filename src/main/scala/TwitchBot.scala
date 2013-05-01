@@ -7,7 +7,8 @@ case class TwitchBot(
 
   val system = ActorSystem("twitchbot")
 
-  val ircManager = system.actorOf(Props(new IRCManager(servers)))
+  val twitchManager = system.actorOf(Props(new TwitchManager))
+  val ircManager = system.actorOf(Props(new IRCManager(servers, twitchManager)))
   
   ircManager ! Initialise
 

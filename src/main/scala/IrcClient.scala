@@ -1,5 +1,6 @@
 package twitchbot;
 import akka.actor.Actor
+import akka.actor.ActorRef
 import akka.actor.IO
 import akka.actor.IOManager
 import akka.util.ByteString
@@ -19,7 +20,7 @@ case object Disconnected extends ClientState
 sealed trait ClientData
 case class ResponsibleFor(server: Server, socket: IO.SocketHandle) extends ClientData
 
-class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[ClientState, ClientData] {
+class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) extends Actor with FSM[ClientState, ClientData] {
 
   val state = IO.IterateeRef.Map.async[IO.Handle]()(context.dispatcher)
   val ioManager = IOManager(context.system)

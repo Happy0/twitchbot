@@ -20,14 +20,15 @@ sealed trait Data
 case object Empty extends Data
 case class ServerHandlers(serverList: Map[String, ActorRef]) extends Data
 
-class IRCManager(servers: List[Server]) extends Actor with FSM[State, Data] {
+class IRCManager(servers: List[Server], twitch: ActorRef) extends Actor with FSM[State, Data] {
 
   startWith(Uninitialised, Empty)
 
   when(Uninitialised) {
     case Event(Initialise, Empty) =>
-      println ("Initialising!")
-      val initialised = servers.map(server => server.servername -> context.actorOf(Props(new IRCClient(server,this)), name = server.servername))
+      println("Initialising!")
+      val initialised = servers.map(server => server.servername -> context.actorOf(Props(new IRCClient(server, self, twitch)),
+        name = server.servername))
       goto(Active) using ServerHandlers(initialised.toMap)
   }
 
