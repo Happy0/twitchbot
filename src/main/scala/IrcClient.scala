@@ -42,7 +42,7 @@ class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[C
 
       goto(Connected) using responsable.copy(socket = socket)
   }
-  
+
   when(Connected) {
     case Event(Registered, responsible: ResponsibleFor) =>
       println("Actor: Registered!")
@@ -51,21 +51,18 @@ class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[C
 
   onTransition {
     case Connected -> FullyConnected =>
-      println ("Transitioning to FullyConnected")
+      println("Transitioning to FullyConnected")
       stateData match {
         case ResponsibleFor(server, socket) => server.channels.foreach(channel => IRCClient.joinChannel(socket, channel))
       }
 
   }
-  
-    
+
   when(FullyConnected) {
     case Event(ChannelMessage(user, channel, message), responsible: ResponsibleFor) =>
-      stay using responsible 
-      
-    
-  }
+      stay using responsible
 
+  }
 
   whenUnhandled {
     case Event(IO.Read(socket, bytes), server: ResponsibleFor) =>
@@ -92,21 +89,25 @@ object IRCMessageParser {
     if (line.startsWith("PING :")) {
       val number = line.drop(6)
       PING(number)
-      
-    //@TODO: Parse for '001' code => Completed registration with server. This will allow for transition into next state.
+
+      //@TODO: Parse for '001' code => Completed registration with server. This will allow for transition into next state.
     } else if (line.startsWith(":")) {
-      val command = line.drop(1).takeWhile(c => c != ':')
-      if (command.contains(" 001 ")) {
-        Registered
-      } 
-      else {
-        NoInterest
+      val commandLine = line.drop(1).takeWhile(c => c != ':')
+      val commandSplit = commandLine.split(" ").toList
+
+      val prefix = commandSplit(0)
+      val command = commandSplit(1)
+      val params = commandSplit.drop(2)
+
+      val trailing = line.drop(commandLine.length() + 1)
+
+      command match {
+        case "001" => Registered
+        case "PRIVMSG" => ChannelMessage(prefix.takeWhile(c => c != '!'), params(0), trailing)
+        case _ => NoInterest
       }
-      
-    } 
-    
-    
-    else {
+
+    } else {
       NoInterest
     }
 
@@ -123,17 +124,12 @@ object IRCClient {
         line <- IO takeUntil ByteString("\r\n")
       } yield {
         println(IRCMessageParser.ascii(line))
-
-        val theLine = line
-        val message = IRCMessageParser.parse(theLine)
+        val message = IRCMessageParser.parse(line)
 
         message match {
           case PING(number) => writeMessage(socket, String.format("PONG :%s", number))
-          case Registered =>
-            println("Sending 'Registered' to actor")
-            actor ! Registered
-          case ChannelMessage(user, string, message) =>
           case NoInterest =>
+          case anyThingElse => actor ! anyThingElse
         }
 
       }
