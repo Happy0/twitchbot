@@ -12,22 +12,24 @@ case object Connected extends ClientState
 case object Disconnected extends ClientState
 
 sealed trait ClientData
-case class ResponsableFor(server: Server) extends ClientData
+case class ResponsableFor(server: Server, socket: IO.SocketHandle) extends ClientData
 
 class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[ClientState, ClientData] {
 
   val state = IO.IterateeRef.Map.async[IO.Handle]()(context.dispatcher)
   val ioManager = IOManager(context.system)
-  val socket = ioManager.connect(server.address, server.port)
+  val scket = ioManager.connect(server.address, server.port)
 
-  startWith(Disconnected, ResponsableFor(server))
+  startWith(Disconnected, ResponsableFor(server, scket))
 
   when(Disconnected) {
 
     case Event(IO.Connected(socket, address), server: ResponsableFor) =>
-      state(socket) flatMap (_ => IRCClient.processMessage(socket))
+      state(socket) flatMap (_ => IRCClient.processMessage(socket, self))
       println("Successfully connected to " + address)
-      goto(Connected) using server
+
+      goto(Connected) using server.copy(socket = socket)
+
   }
 
   when(Connected) {
@@ -45,24 +47,6 @@ class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[C
 
   }
 
-  /*
-  def receive = {
-
-    case IO.Connected(socket, address) =>
-      state(socket) flatMap (_ => IRCClient.processMessage(socket))
-      println("Successfully connected to " + address)
-
-    case IO.Closed(socket: IO.SocketHandle, cause) =>
-      //@TODO: Attempt to reconnect
-      state(socket)(IO EOF)
-      state -= socket
-      println("Socket has closed, cause: " + cause)
-
-    case IO.Read(socket, bytes) =>
-      state(socket)(IO Chunk bytes)
-
-  } */
-
 }
 
 object IRCMessageParser {
@@ -75,14 +59,17 @@ object IRCMessageParser {
 }
 
 object IRCClient {
+  import akka.actor.ActorRef
 
-  def processMessage(socket: IO.SocketHandle): IO.Iteratee[Unit] = {
+  /** @actorRef : The actor to send a parsed IRCMessage to when available */
+  def processMessage(socket: IO.SocketHandle, actor: ActorRef): IO.Iteratee[Unit] = {
     IO repeat {
       for {
         line <- IO takeUntil ByteString("\r\n")
       } yield {
         val theLine = line
         println(IRCMessageParser.ascii(theLine))
+
       }
 
     }
