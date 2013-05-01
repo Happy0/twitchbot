@@ -8,7 +8,7 @@ import akka.actor.FSM
 sealed trait IRCServerMessage
 case class ChannelMessage(user: String, channel: String, message: String) extends IRCServerMessage
 case class PING(number: String) extends IRCServerMessage
-case class Registered
+case object Registered extends IRCServerMessage
 case object NoInterest extends IRCServerMessage
 
 sealed trait ClientState
@@ -42,19 +42,30 @@ class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[C
 
       goto(Connected) using responsable.copy(socket = socket)
   }
-
+  
   when(Connected) {
     case Event(Registered, responsible: ResponsibleFor) =>
+      println("Actor: Registered!")
       goto(FullyConnected) using responsible
   }
 
   onTransition {
     case Connected -> FullyConnected =>
+      println ("Transitioning to FullyConnected")
       stateData match {
         case ResponsibleFor(server, socket) => server.channels.foreach(channel => IRCClient.joinChannel(socket, channel))
       }
 
   }
+  
+    
+  when(FullyConnected) {
+    case Event(ChannelMessage(user, channel, message), responsible: ResponsibleFor) =>
+      stay using responsible 
+      
+    
+  }
+
 
   whenUnhandled {
     case Event(IO.Read(socket, bytes), server: ResponsibleFor) =>
@@ -83,7 +94,19 @@ object IRCMessageParser {
       PING(number)
       
     //@TODO: Parse for '001' code => Completed registration with server. This will allow for transition into next state.
-    } else {
+    } else if (line.startsWith(":")) {
+      val command = line.drop(1).takeWhile(c => c != ':')
+      if (command.contains(" 001 ")) {
+        Registered
+      } 
+      else {
+        NoInterest
+      }
+      
+    } 
+    
+    
+    else {
       NoInterest
     }
 
@@ -106,6 +129,9 @@ object IRCClient {
 
         message match {
           case PING(number) => writeMessage(socket, String.format("PONG :%s", number))
+          case Registered =>
+            println("Sending 'Registered' to actor")
+            actor ! Registered
           case ChannelMessage(user, string, message) =>
           case NoInterest =>
         }
