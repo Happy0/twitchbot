@@ -32,9 +32,7 @@ class IRCManager(servers: List[Server]) extends Actor with FSM[State, Data] {
   }
 
   when(Active) {
-    case Event(JoinChannel(server, channel), handlers: ServerHandlers) =>
-      // Placeholder
-      goto(Active) using handlers
+    case Event(_, handlers: ServerHandlers) => stay using handlers
   }
 }
 

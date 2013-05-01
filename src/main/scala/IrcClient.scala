@@ -8,26 +8,27 @@ import akka.actor.FSM
 sealed trait IRCServerMessage
 case class ChannelMessage(user: String, channel: String, message: String) extends IRCServerMessage
 case class PING(number: String) extends IRCServerMessage
+case class Registered
 case object NoInterest extends IRCServerMessage
 
 sealed trait ClientState
 case object Connected extends ClientState
+case object FullyConnected extends ClientState
 case object Disconnected extends ClientState
 
 sealed trait ClientData
-case class ResponsableFor(server: Server, socket: IO.SocketHandle) extends ClientData
+case class ResponsibleFor(server: Server, socket: IO.SocketHandle) extends ClientData
 
 class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[ClientState, ClientData] {
 
   val state = IO.IterateeRef.Map.async[IO.Handle]()(context.dispatcher)
   val ioManager = IOManager(context.system)
-  val scket = ioManager.connect(server.address, server.port)
 
-  startWith(Disconnected, ResponsableFor(server, scket))
+  startWith(Disconnected, ResponsibleFor(server, ioManager.connect(server.address, server.port)))
 
   when(Disconnected) {
 
-    case Event(IO.Connected(socket, address), responsable: ResponsableFor) =>
+    case Event(IO.Connected(socket, address), responsable: ResponsibleFor) =>
       val botName = responsable.server.username
 
       state(socket) flatMap (_ => IRCClient.processMessage(socket, self))
@@ -37,23 +38,35 @@ class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[C
       IRCClient.writeMessage(socket, String.format("NICK %s", botName))
       IRCClient.writeMessage(socket, String.format("USER %s 0 * :%s", botName, botName))
 
+      // Join the channels that the bot is configured to join
+
       goto(Connected) using responsable.copy(socket = socket)
   }
 
   when(Connected) {
+    case Event(Registered, responsible: ResponsibleFor) =>
+      goto(FullyConnected) using responsible
+  }
 
-    case Event(IO.Read(socket, bytes), server: ResponsableFor) =>
+  onTransition {
+    case Connected -> FullyConnected =>
+      stateData match {
+        case ResponsibleFor(server, socket) => server.channels.foreach(channel => IRCClient.joinChannel(socket, channel))
+      }
 
+  }
+
+  whenUnhandled {
+    case Event(IO.Read(socket, bytes), server: ResponsibleFor) =>
       state(socket)(IO Chunk bytes)
       stay using server
 
-    case Event(IO.Closed(socket: IO.SocketHandle, cause), server: ResponsableFor) =>
+    case Event(IO.Closed(socket: IO.SocketHandle, cause), server: ResponsibleFor) =>
       //@TODO: Attempt to reconnect => Using a timer?
       state(socket)(IO EOF)
       state -= socket
       println("Socket has closed, cause: " + cause)
       goto(Disconnected) using server
-
   }
 
 }
@@ -68,6 +81,8 @@ object IRCMessageParser {
     if (line.startsWith("PING :")) {
       val number = line.drop(6)
       PING(number)
+      
+    //@TODO: Parse for '001' code => Completed registration with server. This will allow for transition into next state.
     } else {
       NoInterest
     }
@@ -101,5 +116,9 @@ object IRCClient {
 
   }
   def writeMessage(socket: IO.SocketHandle, out: String) = socket.write(ByteString(out + "\r\n"))
+
+  def joinChannel(socket: IO.SocketHandle, channel: Channel) = {
+    writeMessage(socket, "JOIN " + channel.name)
+  }
 
 }

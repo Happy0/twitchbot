@@ -22,7 +22,7 @@ object TwitchBot {
     val username = args.find(str => str.startsWith("nick=")).fold("TwitchBot21321")(a => a.drop(5))
     val server = args.find(str => str.startsWith("server=")).fold("irc.quakenet.org")(a => a.drop(7))
     val port = toInt(args.find(str => str.startsWith("port=")).fold("6667")(a => a.drop(5)))
-    val chan = args.find(str => str.startsWith("chan=")).fold("#redditeux")(a => a.drop(5))
+    val chan = args.find(str => str.startsWith("chan=")).fold("#redditeu")(a => a.drop(5))
     
     println (username)
     println(server)
