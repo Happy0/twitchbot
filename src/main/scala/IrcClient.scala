@@ -5,7 +5,10 @@ import akka.actor.IOManager
 import akka.util.ByteString
 import akka.actor.FSM
 
-case class IRCMessage(user: String, channel: String, message: String)
+sealed trait IRCServerMessage
+case class ChannelMessage(user: String, channel: String, message: String) extends IRCServerMessage
+case class PING(number: String) extends IRCServerMessage
+case object NoInterest extends IRCServerMessage
 
 sealed trait ClientState
 case object Connected extends ClientState
@@ -24,17 +27,23 @@ class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[C
 
   when(Disconnected) {
 
-    case Event(IO.Connected(socket, address), server: ResponsableFor) =>
+    case Event(IO.Connected(socket, address), responsable: ResponsableFor) =>
+      val botName = responsable.server.username
+
       state(socket) flatMap (_ => IRCClient.processMessage(socket, self))
       println("Successfully connected to " + address)
 
-      goto(Connected) using server.copy(socket = socket)
+      // Send the bot's nickname to the server
+      IRCClient.writeMessage(socket, String.format("NICK %s", botName))
+      IRCClient.writeMessage(socket, String.format("USER %s 0 * :%s", botName, botName))
 
+      goto(Connected) using responsable.copy(socket = socket)
   }
 
   when(Connected) {
 
     case Event(IO.Read(socket, bytes), server: ResponsableFor) =>
+
       state(socket)(IO Chunk bytes)
       stay using server
 
@@ -50,10 +59,18 @@ class IRCClient(server: Server, ircManager: IRCManager) extends Actor with FSM[C
 }
 
 object IRCMessageParser {
+
   def ascii(bytes: ByteString): String = bytes.decodeString("US-ASCII").trim
 
-  def parse(bytes: ByteString): IRCMessage = {
-    ???
+  def parse(bytes: ByteString): IRCServerMessage = {
+    val line = ascii(bytes)
+
+    if (line.startsWith("PING :")) {
+      val number = line.drop(6)
+      PING(number)
+    } else {
+      NoInterest
+    }
 
   }
 }
@@ -67,13 +84,22 @@ object IRCClient {
       for {
         line <- IO takeUntil ByteString("\r\n")
       } yield {
+        println(IRCMessageParser.ascii(line))
+
         val theLine = line
-        println(IRCMessageParser.ascii(theLine))
+        val message = IRCMessageParser.parse(theLine)
+
+        message match {
+          case PING(number) => writeMessage(socket, String.format("PONG :%s", number))
+          case ChannelMessage(user, string, message) =>
+          case NoInterest =>
+        }
 
       }
 
     }
 
   }
+  def writeMessage(socket: IO.SocketHandle, out: String) = socket.write(ByteString(out + "\r\n"))
 
 }
