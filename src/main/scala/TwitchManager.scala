@@ -56,7 +56,8 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
       actor ! SuccessfullySubscribed(channel, stream)
       if (newMap.size < 100) stay using newFollowed else goto(FullySubscribed) using (newFollowed)
 
-    case Event(UnSubscribe, followed: Followed) =>
+    case Event(UnSubscribe(actor, channel, stream), followed: Followed) =>
+      val newFollowed = unSubscribe(actor, channel, stream, followed)
       stay using followed // placeholder
 
   }
@@ -64,11 +65,30 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
   when(FullySubscribed) {
     //@TODO: Alert subscriber that we're fully subscribed => Using futures?
     case Event(Subscribe(actor, channel, stream), followed: Followed) =>
-      actor ! UnSuccessfulSubscribe
+      actor ! UnSuccessfulSubscribe(channel, stream)
       stay using followed
 
-    case Event(UnSubscribe, followed: Followed) =>
-      stay using followed //placeholder
+    case Event(UnSubscribe(actor, channel, stream), followed: Followed) =>
+      val newFollowed = unSubscribe(actor, channel, stream, followed)
+      if (newFollowed.twitchUsers.size < 100) goto(Open) using newFollowed else stay using newFollowed
+
+  }
+
+  whenUnhandled {
+    case Event(PollTwitch, followed: Followed) =>
+      stay using followed
+  }
+
+  def unSubscribe(actor: ActorRef, channel: Channel, stream: String, followed: Followed): Followed = {
+    val map = followed.twitchUsers
+    val entry = map.get(stream)
+    entry.fold(followed) { a =>
+      val subscribers = a.subscribers
+      val updatedSubscribers = subscribers.filterNot(a => a.channel == channel && a.stream == stream)
+      val newMap = if (updatedSubscribers.isEmpty) map - stream else map.updated(stream, a.copy(subscribers = updatedSubscribers))
+
+      followed.copy(twitchUsers = newMap)
+    }
   }
 
 }
