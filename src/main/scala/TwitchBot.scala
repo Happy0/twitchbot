@@ -7,12 +7,10 @@ case class TwitchBot(
 
   val system = ActorSystem("twitchbot")
 
-  val twitchManager = system.actorOf(Props(new TwitchManager))
+  val twitchManager = system.actorOf(Props(new TwitchManager(100)))
   val ircManager = system.actorOf(Props(new IRCManager(servers, twitchManager)))
-  
-  ircManager ! Initialise
 
- // val twitchManager = ???
+  ircManager ! Initialise
 
 }
 
@@ -24,8 +22,8 @@ object TwitchBot {
     val server = args.find(str => str.startsWith("server=")).fold("irc.quakenet.org")(a => a.drop(7))
     val port = toInt(args.find(str => str.startsWith("port=")).fold("6667")(a => a.drop(5)))
     val chan = args.find(str => str.startsWith("chan=")).fold("#redditeutests")(a => a.drop(5))
-    
-    println (username)
+
+    println(username)
     println(server)
     println(port)
     println(chan)

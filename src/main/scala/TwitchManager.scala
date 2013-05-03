@@ -35,7 +35,7 @@ case class Followed(twitchUsers: Map[String, TwitchUser]) extends TwitchData
 // http://api.justin.tv/api/stream/list.json?channel=wcs_europe
 
 //@TODO: Initialise with a persisted configuration
-class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
+case class TwitchManager(capacity: Int) extends Actor with FSM[TwitchState, TwitchData] {
 
   setTimer("poll", PollTwitch, FiniteDuration(1, TimeUnit.MINUTES), true)
 
@@ -50,7 +50,8 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
       val map = followed.twitchUsers
       val entry = map.get(stream)
       val newMap: Map[String, TwitchUser] =
-        entry.fold(map + (stream -> TwitchUser(stream, "", List(subscriber))))(x => map.updated(stream, x.addSubscriber(subscriber)))
+        entry.fold(map + (stream -> TwitchUser(stream, "", List(subscriber))))(
+          x => map.updated(stream, x.addSubscriber(subscriber)))
 
       val newFollowed = followed.copy(twitchUsers = newMap)
       actor ! SuccessfullySubscribed(channel, stream)
@@ -70,7 +71,7 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
 
     case Event(UnSubscribe(actor, channel, stream), followed: Followed) =>
       val newFollowed = unSubscribe(actor, channel, stream, followed)
-      if (newFollowed.twitchUsers.size < 100) goto(Open) using newFollowed else stay using newFollowed
+      if (newFollowed.twitchUsers.size < capacity) goto(Open) using newFollowed else stay using newFollowed
 
   }
 
