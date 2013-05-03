@@ -6,6 +6,9 @@ import akka.actor.ActorRef
 import akka.actor.FSM
 import scala.concurrent.duration.FiniteDuration
 import java.util.concurrent.TimeUnit
+import net.liftweb.json.parse
+import net.liftweb.json.JField
+import net.liftweb.json.JString
 
 case object Start
 case class SuccessfullySubscribed(channel: Channel, stream: String)
@@ -52,12 +55,20 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
     case Event(PollTwitch, followed: Followed) =>
       val commaList = followed.twitchUsers.foldLeft("") {
         case (str, (key, value)) =>
-          value + ","
+          str + key + ","
       }.dropRight(1)
       val url = "http://api.justin.tv/api/stream/list.json?channel="
-      val json = Source.fromURL(url + commaList)
+      println("url is" + url)
+      val json = Source.fromURL(url + commaList).mkString
+      val parsed = parse(json)
+
+      val streaming = for {
+        JField("login", JString(login)) <- parsed
+        JField("up_time", JString(date)) <- parsed
+        JField("title", JString(title)) <- parsed
+      } yield (login.toString(), date.toString(), title.toString())
       
-      println("json is: " + json)
+      
 
       stay using followed // placeholder
 
