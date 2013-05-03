@@ -72,7 +72,7 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
         case (login, date, title) =>
           val twitchuser = followed.twitchUsers.get(login).get
           if (!(twitchuser.lastAnnounced == date)) {
-            twitchuser.subscribers.foreach(a => a.actor ! Streaming(login, title)) // Please don't kill me, Ornicar
+            twitchuser.subscribers.foreach(a => a.actor ! Streaming(a.channel, login, title)) // Please don't kill me, Ornicar
             twitchuser.name -> twitchuser.copy(lastAnnounced = date)
           } else {
             twitchuser.name -> twitchuser

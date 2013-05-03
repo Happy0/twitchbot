@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 
 case object Reconnect
 
-case class Streaming(user: String, title: String)
+case class Streaming(channel: Channel, user: String, title: String)
 
 // A message from the IRC Server
 sealed trait IRCServerMessage
@@ -71,6 +71,10 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
         responsible
       }(f =>
         responsible.copy(server = f))
+        
+    case Event(Streaming(channel, user, title), responsible: ResponsibleFor) =>
+      IRCClient.writeToChannel(responsible.socket, channel.name, user + " has began streaming with the title : " + title)
+      stay using responsible
 
   }
 
