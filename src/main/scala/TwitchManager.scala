@@ -1,11 +1,13 @@
 package twitchbot
 
 import akka.actor.Actor
+import scala.io.Source
 import akka.actor.ActorRef
 import akka.actor.FSM
 import scala.concurrent.duration.FiniteDuration
 import java.util.concurrent.TimeUnit
 
+case object Start
 case class SuccessfullySubscribed(channel: Channel, stream: String)
 case class UnSuccessfulSubscribe(channel: Channel, stream: String)
 
@@ -15,6 +17,7 @@ private case object PollTwitch
 
 sealed trait TwitchState
 
+case object Uninitiated extends TwitchState
 case object Open extends TwitchState
 case object FullySubscribed extends TwitchState
 
@@ -35,14 +38,27 @@ case class Followed(twitchUsers: Map[String, TwitchUser]) extends TwitchData
 // http://api.justin.tv/api/stream/list.json?channel=wcs_europe
 
 //@TODO: Initialise with a persisted configuration
-case class TwitchManager(capacity: Int) extends Actor with FSM[TwitchState, TwitchData] {
+class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
 
-  setTimer("poll", PollTwitch, FiniteDuration(1, TimeUnit.MINUTES), true)
+  startWith(Uninitiated, Followed(Map.empty[String, TwitchUser]))
 
-  startWith(Open, Followed(Map.empty[String, TwitchUser]))
+  when(Uninitiated) {
+    case Event(Start, followed: Followed) =>
+      setTimer("poll", PollTwitch, FiniteDuration(1, TimeUnit.MINUTES), true)
+      goto(Open) using followed
+  }
 
   when(Open) {
     case Event(PollTwitch, followed: Followed) =>
+      val commaList = followed.twitchUsers.foldLeft("") {
+        case (str, (key, value)) =>
+          value + ","
+      }.dropRight(1)
+      val url = "http://api.justin.tv/api/stream/list.json?channel="
+      val json = Source.fromURL(url + commaList)
+      
+      println("json is: " + json)
+
       stay using followed // placeholder
 
     case Event(Subscribe(actor: ActorRef, channel: Channel, stream: String), followed: Followed) =>
@@ -59,7 +75,7 @@ case class TwitchManager(capacity: Int) extends Actor with FSM[TwitchState, Twit
 
     case Event(UnSubscribe(actor, channel, stream), followed: Followed) =>
       val newFollowed = unSubscribe(actor, channel, stream, followed)
-      stay using followed // placeholder
+      stay using followed
 
   }
 
@@ -71,7 +87,7 @@ case class TwitchManager(capacity: Int) extends Actor with FSM[TwitchState, Twit
 
     case Event(UnSubscribe(actor, channel, stream), followed: Followed) =>
       val newFollowed = unSubscribe(actor, channel, stream, followed)
-      if (newFollowed.twitchUsers.size < capacity) goto(Open) using newFollowed else stay using newFollowed
+      if (newFollowed.twitchUsers.size < 100) goto(Open) using newFollowed else stay using newFollowed
 
   }
 

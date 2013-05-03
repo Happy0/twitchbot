@@ -7,9 +7,10 @@ case class TwitchBot(
 
   val system = ActorSystem("twitchbot")
 
-  val twitchManager = system.actorOf(Props(new TwitchManager(100)))
+  val twitchManager = system.actorOf(Props(new TwitchManager))
   val ircManager = system.actorOf(Props(new IRCManager(servers, twitchManager)))
 
+  twitchManager ! Start
   ircManager ! Initialise
 
 }
@@ -30,7 +31,7 @@ object TwitchBot {
 
     validateInput(username, server, port, chan) match {
       case None =>
-        val bot = TwitchBot(List(Server(server, server, port getOrElse 6667, List(Channel(chan, List.empty[String])), username)))
+        val bot = TwitchBot(List(Server(server, server, port getOrElse 6667, Map(chan -> Channel(chan, List.empty[String])), username)))
       case Some(str) =>
         println(str + ", exitting.")
         System.exit(1)

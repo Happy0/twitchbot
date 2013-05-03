@@ -42,28 +42,33 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
     case Event(Reconnect, responsible: ResponsibleFor) =>
       ioManager.connect(responsible.server.address, responsible.server.port)
       goto(Reconnecting) using responsible
-
   }
 
   when(Connected) {
     case Event(Registered, responsible: ResponsibleFor) =>
       println("Actor: Registered!")
       goto(FullyConnected) using responsible
+  }
 
+  when(FullyConnected) {
     case Event(AddStream(streamName, msg), responsible: ResponsibleFor) =>
-      val channel = responsible.server.channels.find(a => a.name == msg.channel)
-      channel.fold(IRCClient.writeMessage(responsible.socket, "Error: Please contact Happy0.")) {
+      val channel = responsible.server.channels.get(msg.channel)
+      channel.fold(println("Channel not in server object.")) {
         a =>
-          IRCClient.writeMessage(responsible.socket, "Subscribing to" + streamName)
+          IRCClient.writeToChannel(responsible.socket, msg.channel, "Subscribing to " + streamName)
           twitchManager ! Subscribe(self, a, streamName)
       }
 
       stay using responsible
-  }
 
-  when(FullyConnected) {
-    case Event(ChannelMessage(user, channel, message), responsible: ResponsibleFor) =>
-      stay using responsible
+    case Event(SuccessfullySubscribed(channel, stream), responsible: ResponsibleFor) =>
+      val server = responsible.server.addSubscription(channel, stream)
+
+      stay using server.fold {
+        IRCClient.writeMessage(responsible.socket, "Error 1, contact Happy0")
+        responsible
+      }(f =>
+        responsible.copy(server = f))
 
   }
 
@@ -71,7 +76,7 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
     case Connected -> FullyConnected =>
       println("Transitioning to FullyConnected")
       stateData match {
-        case ResponsibleFor(server, socket) => server.channels.foreach(channel => IRCClient.joinChannel(socket, channel))
+        case ResponsibleFor(server, socket) => server.channels.foreach { case (key, channel) => IRCClient.joinChannel(socket, channel) }
       }
 
     // @TODO: Count the number of times we reconnect
@@ -130,14 +135,15 @@ object IRCMessageParser {
       val command = commandSplit(1)
       val params = commandSplit.drop(2)
 
-      val trailing = line.drop(commandLine.length() + 1)
+      val trailing = line.drop(commandLine.length() + 2)
 
       command match {
         case "001" => Registered
         case "PRIVMSG" =>
           val chanMsg = ChannelMessage(prefix.takeWhile(c => c != '!'), params(0), trailing)
+          println("chanMsg" + chanMsg)
           if (chanMsg.message.startsWith("!watch")) {
-            val twitchName = chanMsg.message.drop(6).takeWhile(c => c != ' ')
+            val twitchName = chanMsg.message.drop(7).takeWhile(c => c != ' ') // @TODO: Check for invalid format
             AddStream(twitchName, chanMsg)
 
           } else {
@@ -177,9 +183,15 @@ object IRCClient {
     }
 
   }
+  def writeToChannel(socket: IO.SocketHandle, channelName: String, message: String) = {
+    println("Private messaging " + channelName + " with: " + message)
+    writeMessage(socket, "PRIVMSG " + channelName + " :" + message)
+  }
+
   def writeMessage(socket: IO.SocketHandle, out: String) = socket.write(ByteString(out + "\r\n"))
 
   def joinChannel(socket: IO.SocketHandle, channel: Channel) = {
+    println("Joining " + "#channel")
     writeMessage(socket, "JOIN " + channel.name)
   }
 
