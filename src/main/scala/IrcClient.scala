@@ -7,10 +7,14 @@ import akka.util.ByteString
 import akka.actor.FSM
 import scala.concurrent.duration.FiniteDuration
 import java.util.concurrent.TimeUnit
+import akka.actor.Props
+import collection.immutable.Queue
 
 case object Reconnect
+case object SendQueueMessage
 
 case class Streaming(channel: Channel, user: String, title: String)
+case class AlreadySubscribed(user: String)
 
 // A message from the IRC Server
 sealed trait IRCServerMessage
@@ -31,63 +35,69 @@ case object Disconnected extends ClientState
 case object Reconnecting extends ClientState
 
 sealed trait ClientData
-case class ResponsibleFor(server: Server, socket: IO.SocketHandle) extends ClientData
+case class ResponsibleFor(server: Server, socket: IO.SocketHandle, messageQueue: Queue[String]) extends ClientData
 
 class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) extends Actor with FSM[ClientState, ClientData] {
 
   val state = IO.IterateeRef.Map.async[IO.Handle]()(context.dispatcher)
   val ioManager = IOManager(context.system)
 
-  startWith(Disconnected, ResponsibleFor(server, ioManager.connect(server.address, server.port)))
+  startWith(Disconnected, ResponsibleFor(server, ioManager.connect(server.address, server.port), Queue.empty[String]))
 
   when(Disconnected) {
     case Event(Reconnect, responsible: ResponsibleFor) =>
-      ioManager.connect(responsible.server.address, responsible.server.port)
-      goto(Reconnecting) using responsible
+      goto(Reconnecting) using responsible.copy(messageQueue = Queue.empty[String])
   }
 
   when(Connected) {
+
     case Event(Registered, responsible: ResponsibleFor) =>
-      println("Actor: Registered!")
-      goto(FullyConnected) using responsible
+      val queue = responsible.server.channels.foldLeft(responsible.messageQueue) {
+        case (queue: Queue[String], (key, channel)) =>
+          IRCClient.joinChannel(queue, channel)
+      }
+
+      goto(FullyConnected) using responsible.copy(messageQueue = queue)
   }
 
   when(FullyConnected) {
     case Event(AddStream(streamName, msg), responsible: ResponsibleFor) =>
       val channel = responsible.server.channels.get(msg.channel)
-      channel.fold(println("Channel not in server object.")) {
-        a =>
-          IRCClient.writeToChannel(responsible.socket, msg.channel, "Subscribing to " + streamName)
-          twitchManager ! Subscribe(self, a, streamName)
-      }
+      val newQueue = channel.fold(
+        responsible.messageQueue) {
+          a =>
+            twitchManager ! Subscribe(self, a, streamName)
+            IRCClient.writeToChannel(responsible.messageQueue, msg.channel, "Subscribing to " + streamName)
+        }
 
-      stay using responsible
+      stay using responsible.copy(messageQueue = newQueue)
 
     case Event(SuccessfullySubscribed(channel, stream), responsible: ResponsibleFor) =>
       val server = responsible.server.addSubscription(channel, stream)
 
-      stay using server.fold {
-        IRCClient.writeMessage(responsible.socket, "Error 1, contact Happy0")
-        responsible
+      val newresponsible = server.fold {
+        responsible.copy(messageQueue = IRCClient.writeToChannel(
+          responsible.messageQueue, channel.name, "Error 1, contact Happy0"))
       }(f =>
-        responsible.copy(server = f))
-        
+        responsible.copy(server = f, messageQueue = IRCClient.writeToChannel(
+          responsible.messageQueue, channel.name, "Subscribed to stream notifications for " + stream)))
+      stay using newresponsible
+
     case Event(Streaming(channel, user, title), responsible: ResponsibleFor) =>
-      IRCClient.writeToChannel(responsible.socket, channel.name, user + " has began streaming with the title : " + title)
-      stay using responsible
+      val queue = responsible.messageQueue.enqueue(
+        IRCClient.writeToChannel(responsible.messageQueue, channel.name, user + " has began streaming [ " + title + " ]"))
+      stay using responsible.copy(messageQueue = queue)
 
   }
 
   onTransition {
-    case Connected -> FullyConnected =>
-      println("Transitioning to FullyConnected")
-      stateData match {
-        case ResponsibleFor(server, socket) => server.channels.foreach { case (key, channel) => IRCClient.joinChannel(socket, channel) }
-      }
-
     // @TODO: Count the number of times we reconnect
     case _ -> Disconnected =>
       setTimer("reconnect", Reconnect, FiniteDuration(1, TimeUnit.MINUTES), false)
+      cancelTimer("message")
+
+    case Disconnected -> _ =>
+      setTimer("message", SendQueueMessage, FiniteDuration(300, TimeUnit.MILLISECONDS), true)
 
   }
 
@@ -117,6 +127,17 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
       state -= socket
       println("Socket has closed, cause: " + cause)
       goto(Disconnected) using server
+
+    case Event(SendQueueMessage, responsible: ResponsibleFor) =>
+      val queue = responsible.messageQueue
+
+      if (!queue.isEmpty) {
+        val (msg, newQueue) = queue.dequeue
+        IRCClient.writeMessage(responsible.socket, msg)
+        stay using responsible.copy(messageQueue = newQueue)
+      } else {
+        stay using responsible
+      }
   }
 
 }
@@ -183,22 +204,18 @@ object IRCClient {
           case NoInterest =>
           case anyThingElse => actor ! anyThingElse
         }
-
       }
-
     }
-
   }
-  def writeToChannel(socket: IO.SocketHandle, channelName: String, message: String) = {
-    println("Private messaging " + channelName + " with: " + message)
-    writeMessage(socket, "PRIVMSG " + channelName + " :" + message)
+
+  def writeToChannel(queue: Queue[String], channelName: String, message: String) : Queue[String]  = {
+    queue.enqueue("PRIVMSG " + channelName + " :" + message)
   }
 
   def writeMessage(socket: IO.SocketHandle, out: String) = socket.write(ByteString(out + "\r\n"))
 
-  def joinChannel(socket: IO.SocketHandle, channel: Channel) = {
-    println("Joining " + "#channel")
-    writeMessage(socket, "JOIN " + channel.name)
+  def joinChannel(queue: Queue[String], channel: Channel) : Queue[String] = {
+    queue.enqueue("JOIN " + channel.name)
   }
 
 }
