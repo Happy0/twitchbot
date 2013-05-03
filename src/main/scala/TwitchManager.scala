@@ -67,10 +67,19 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
         JField("up_time", JString(date)) <- parsed
         JField("title", JString(title)) <- parsed
       } yield (login.toString(), date.toString(), title.toString())
-      
-      
 
-      stay using followed // placeholder
+      val updated = streaming.map {
+        case (login, date, title) =>
+          val twitchuser = followed.twitchUsers.get(login).get
+          if (!(twitchuser.lastAnnounced == date)) {
+            twitchuser.subscribers.foreach(a => a.actor ! Streaming(login, title)) // Please don't kill me, Ornicar
+            twitchuser.name -> twitchuser.copy(lastAnnounced = date)
+          } else {
+            twitchuser.name -> twitchuser
+          }
+      } toMap
+
+      stay using followed.copy(twitchUsers = updated) // placeholder
 
     case Event(Subscribe(actor: ActorRef, channel: Channel, stream: String), followed: Followed) =>
       val subscriber = Subscriber(actor, channel, stream)

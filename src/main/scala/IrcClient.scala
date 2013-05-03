@@ -10,6 +10,8 @@ import java.util.concurrent.TimeUnit
 
 case object Reconnect
 
+case class Streaming(user: String, title: String)
+
 // A message from the IRC Server
 sealed trait IRCServerMessage
 
