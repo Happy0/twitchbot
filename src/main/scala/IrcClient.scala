@@ -58,6 +58,12 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
           IRCClient.joinChannel(queue, channel)
       }
 
+      // Subscribe to the feeds for each channel
+      responsible.server.channels.foreach {
+        case (key, channel) =>
+          channel.registeredStreams.foreach(a => twitchManager ! Subscribe(self, channel, a))
+      }
+
       goto(FullyConnected) using responsible.copy(messageQueue = queue)
   }
 
@@ -82,7 +88,7 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
 
       val newresponsible = server.fold {
         responsible.copy(messageQueue = IRCClient.writeToChannel(
-          responsible.messageQueue, channel.name, "Error 1, contact Happy0"))
+          responsible.messageQueue, channel.name, "This shouldn't happen. Contact Happy0 ;x"))
       }(f =>
         responsible.copy(server = f, messageQueue = IRCClient.writeToChannel(
           responsible.messageQueue, channel.name, "Subscribed to stream notifications for " + stream)))

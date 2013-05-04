@@ -1,14 +1,16 @@
 package twitchbot;
 import akka.actor.ActorSystem
 import akka.actor.Props
+import java.io.File
 
 case class TwitchBot(
-  servers: List[Server]) {
+  servers: List[Server],
+  configFile: File) {
 
   val system = ActorSystem("twitchbot")
 
   val twitchManager = system.actorOf(Props(new TwitchManager))
-  val ircManager = system.actorOf(Props(new IRCManager(servers, twitchManager)))
+  val ircManager = system.actorOf(Props(new IRCManager(servers, twitchManager, configFile)))
 
   twitchManager ! Start
   ircManager ! Initialise
@@ -19,23 +21,31 @@ object TwitchBot {
   //@TODO: Check for invalid hostname/IP. Persist the configuration.
 
   def main(args: Array[String]) {
-    val username = args.find(str => str.startsWith("nick=")).fold("TwitchBotx0rz")(a => a.drop(5))
-    val server = args.find(str => str.startsWith("server=")).fold("irc.quakenet.org")(a => a.drop(7))
-    val port = toInt(args.find(str => str.startsWith("port=")).fold("6667")(a => a.drop(5)))
-    val chan = args.find(str => str.startsWith("chan=")).fold("#redditeutests")(a => a.drop(5))
+    val fileDir = new File(getClass.getClassLoader.getResource("config/").getPath.toString())
+    val file = new File(fileDir + "config.txt")
 
-    println(username)
-    println(server)
-    println(port)
-    println(chan)
+    if (true || !file.exists() || args.length > 0) {
+      println("config file doesn't exist, creating config file")
+      file.createNewFile()
 
-    validateInput(username, server, port, chan) match {
-      case None =>
-        val bot = TwitchBot(List(Server(server, server, port getOrElse 6667, Map(chan -> Channel(chan, List.empty[String])), username)))
-      case Some(str) =>
-        println(str + ", exitting.")
-        System.exit(1)
+      val username = args.find(str => str.startsWith("nick=")).fold("TwitchBotx0rz")(a => a.drop(5))
+      val server = args.find(str => str.startsWith("server=")).fold("irc.quakenet.org")(a => a.drop(7))
+      val port = toInt(args.find(str => str.startsWith("port=")).fold("6667")(a => a.drop(5)))
+      val chan = args.find(str => str.startsWith("chan=")).fold("#redditeutests")(a => a.drop(5))
+
+      validateInput(username, server, port, chan) match {
+        case None =>
+          val bot = TwitchBot(List(Server(server, server, port getOrElse 6667, Map(chan -> Channel(chan, List.empty[String])), username)), file)
+        case Some(str) =>
+          println(str + ", exitting.")
+          System.exit(1)
+      }
+
+    } else {
+      // Read the config from the configuration file...
+
     }
+
   }
 
   /** Returns a Some with an explanation string if invalid input, otherwise returns Null*/

@@ -1,4 +1,5 @@
 package twitchbot;
+import net.liftweb.json.JsonDSL._
 
 case class Server(servername: String,
   address: String,
@@ -20,6 +21,18 @@ case class Server(servername: String,
 
     }
 
+  }
+
+  val toJson = {
+    ("servername" -> servername) ~
+      ("port" -> port) ~
+      ("address" -> address) ~
+      ("username" -> username) ~
+      ("channels" ->
+        ("name" -> channels.map {
+          case (string, channel) =>
+            channel.registeredStreams
+        }))
   }
 
 }
