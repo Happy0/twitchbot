@@ -70,16 +70,19 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
         println("url is" + url)
         val json = Source.fromURL(url + commaList).mkString
         val parsed = parse(json)
+        val removed =  parsed remove {
+          case JField(channel, _) => channel == "channel"
+          case _ => false
+        }
+        
         println(parsed)
 
         val streaming = for {
-          JField("broadcast_part", JObject(broadpart)) <- parsed
 
           JField("login", JString(login)) <- parsed
-          JField("up_time", JString(date)) <- parsed
-          JField("title", JString(title)) <- parsed
-
-          if (title != login)
+          JField("up_time", JString(date)) <- removed
+          JField("title", JString(title)) <- removed
+          
         } yield (login.toString(), date.toString(), title.toString())
 
         println("Streaming: " + streaming)
