@@ -29,7 +29,6 @@ case object FullySubscribed extends TwitchState
 case class TwitchUser(name: String, lastAnnounced: String, subscribers: List[Subscriber]) {
   def addSubscriber(sub: Subscriber): TwitchUser = {
     if (subscribers.find(p => p.channel == sub.channel).isDefined) {
-      sub.actor ! AlreadySubscribed(name)
       this
     } else {
       copy(subscribers = sub :: subscribers)
@@ -67,12 +66,10 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
           case (str, (key, value)) =>
             str + key + ","
         }.dropRight(1)
+
         val url = "http://api.justin.tv/api/stream/list.json?channel="
-        println("url is" + url)
         val json = Source.fromURL(url + commaList).mkString
         val parsed = parse(json)
-
-        println(parsed)
 
         val streaming = for {
 
@@ -86,8 +83,6 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
           // work out how to extract the title (there is an inner title also)
 
         } yield (login, date, title)
-
-        println("Streaming: " + streaming)
 
         val updated = streaming.map {
           case (login, date, title) =>
@@ -104,16 +99,23 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
       }
 
     case Event(Subscribe(actor: ActorRef, channel: Channel, stream: String), followed: Followed) =>
-      val subscriber = Subscriber(actor, channel, stream)
-      val map = followed.twitchUsers
-      val entry = map.get(stream)
-      val newMap: Map[String, TwitchUser] =
-        entry.fold(map + (stream -> TwitchUser(stream, "", List(subscriber))))(
-          x => map.updated(stream, x.addSubscriber(subscriber)))
+      val exists = true
 
-      val newFollowed = followed.copy(twitchUsers = newMap)
-      actor ! SuccessfullySubscribed(channel, stream)
-      if (newMap.size < 100) stay using newFollowed else goto(FullySubscribed) using (newFollowed)
+      if (!exists) {
+        actor ! NotATwitchUser(channel, stream)
+        stay using followed
+      } else {
+        val subscriber = Subscriber(actor, channel, stream)
+        val map = followed.twitchUsers
+        val entry = map.get(stream)
+        val newMap: Map[String, TwitchUser] =
+          entry.fold(map + (stream -> TwitchUser(stream, "", List(subscriber))))(
+            x => map.updated(stream, x.addSubscriber(subscriber)))
+
+        val newFollowed = followed.copy(twitchUsers = newMap)
+        actor ! SuccessfullySubscribed(channel, stream)
+        if (newMap.size < 100) stay using newFollowed else goto(FullySubscribed) using (newFollowed)
+      }
 
     case Event(UnSubscribe(actor, channel, stream), followed: Followed) =>
       val newFollowed = unSubscribe(actor, channel, stream, followed)
@@ -129,7 +131,7 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
 
     case Event(UnSubscribe(actor, channel, stream), followed: Followed) =>
       val newFollowed = unSubscribe(actor, channel, stream, followed)
-      if (newFollowed.twitchUsers.size < 100) goto(Open) using newFollowed else stay using newFollowed
+      if (newFollowed.twitchUsers.size < 50) goto(Open) using newFollowed else stay using newFollowed
 
   }
 
@@ -148,6 +150,19 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
 
       followed.copy(twitchUsers = newMap)
     }
+  }
+
+  def userExists(stream: String): Boolean = {
+    val userURL = "http://api.justin.tv/api/user/show/" + stream + ".json"
+    val json = Source.fromURL(userURL).mkString
+    val parsed = parse(json)
+
+    val error = parsed.find(a => a match {
+      case JField(key, _) => key == "error"
+      case _ => false
+    })
+
+    return error.isEmpty
   }
 
 }

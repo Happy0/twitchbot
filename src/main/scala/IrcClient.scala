@@ -14,7 +14,8 @@ case object Reconnect
 case object SendQueueMessage
 
 case class Streaming(channel: Channel, user: String, title: String)
-case class AlreadySubscribed(user: String)
+case class AlreadySubscribed(channel: Channel, user: String)
+case class NotATwitchUser(channel: Channel, user: String)
 
 // A message from the IRC Server
 sealed trait IRCServerMessage
@@ -71,6 +72,10 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
         }
 
       stay using responsible.copy(messageQueue = newQueue)
+
+    case Event(NotATwitchUser(channel, stream), responsible: ResponsibleFor) =>
+      val queue = IRCClient.writeToChannel(responsible.messageQueue, channel.name, stream + " is not a twitch login.")
+      stay using responsible.copy(messageQueue = queue)
 
     case Event(SuccessfullySubscribed(channel, stream), responsible: ResponsibleFor) =>
       val server = responsible.server.addSubscription(channel, stream)
