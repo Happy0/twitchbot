@@ -10,6 +10,7 @@ import net.liftweb.json.parse
 import net.liftweb.json.JField
 import net.liftweb.json.JString
 import net.liftweb.json.JObject
+import net.liftweb.json.JArray
 
 case object Start
 case class SuccessfullySubscribed(channel: Channel, stream: String)
@@ -70,17 +71,14 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
         println("url is" + url)
         val json = Source.fromURL(url + commaList).mkString
         val parsed = parse(json)
-        val removed = parsed remove {
-          case JField(channel, _) => channel == "channel"
-          case _ => false
-        }
 
         println(parsed)
 
         val streaming = for {
 
-          JField("login", JString(login)) <- parsed
-          JField("up_time", JString(date)) <- parsed
+          JArray(List(JObject(streamers))) <- parsed
+          JField("login", JString(login)) <- streamers
+          JField("up_time", JString(date)) <- streamers
 
           // work out how to extract the title (there is an inner title also)
 

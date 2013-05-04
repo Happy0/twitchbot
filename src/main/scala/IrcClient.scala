@@ -84,8 +84,8 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
       stay using newresponsible
 
     case Event(Streaming(channel, user, title), responsible: ResponsibleFor) =>
-      val queue = responsible.messageQueue.enqueue(
-        IRCClient.writeToChannel(responsible.messageQueue, channel.name, user + " has began streaming [ " + title + " ]"))
+      val queue =
+        IRCClient.writeToChannel(responsible.messageQueue, channel.name, user + " has began streaming [ " + title + " ]")
       stay using responsible.copy(messageQueue = queue)
 
   }
