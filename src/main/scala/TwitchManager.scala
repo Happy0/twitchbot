@@ -76,13 +76,16 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
 
         val streaming = for {
 
-          JArray(streamers) <- parsed         
-          JField("login", JString(login)) <- streamers
-          JField("up_time", JString(date)) <- streamers
+          JObject(child) <- parsed
+          list <- child
+          other <- list.children
+          JField("login", JString(login)) <- other
+          JField("up_time", JString(date)) <- child
+          JField("title", JString(title)) <- child
 
           // work out how to extract the title (there is an inner title also)
 
-        } yield (login.toString(), date.toString(), " ")
+        } yield (login, date, title)
 
         println("Streaming: " + streaming)
 
