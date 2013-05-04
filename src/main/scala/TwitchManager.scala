@@ -76,7 +76,7 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
 
         val streaming = for {
 
-          JArray(List(JObject(streamers))) <- parsed
+          JArray(streamers) <- parsed         
           JField("login", JString(login)) <- streamers
           JField("up_time", JString(date)) <- streamers
 
