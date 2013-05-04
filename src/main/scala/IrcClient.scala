@@ -64,10 +64,10 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
     case Event(AddStream(streamName, msg), responsible: ResponsibleFor) =>
       val channel = responsible.server.channels.get(msg.channel)
       val newQueue = channel.fold(
-        responsible.messageQueue) {
+        IRCClient.writeToChannel(responsible.messageQueue, msg.channel, "Unlikely error")) {
           a =>
             twitchManager ! Subscribe(self, a, streamName)
-            IRCClient.writeToChannel(responsible.messageQueue, msg.channel, "Subscribing to " + streamName)
+            responsible.messageQueue
         }
 
       stay using responsible.copy(messageQueue = newQueue)
@@ -208,13 +208,13 @@ object IRCClient {
     }
   }
 
-  def writeToChannel(queue: Queue[String], channelName: String, message: String) : Queue[String]  = {
+  def writeToChannel(queue: Queue[String], channelName: String, message: String): Queue[String] = {
     queue.enqueue("PRIVMSG " + channelName + " :" + message)
   }
 
   def writeMessage(socket: IO.SocketHandle, out: String) = socket.write(ByteString(out + "\r\n"))
 
-  def joinChannel(queue: Queue[String], channel: Channel) : Queue[String] = {
+  def joinChannel(queue: Queue[String], channel: Channel): Queue[String] = {
     queue.enqueue("JOIN " + channel.name)
   }
 

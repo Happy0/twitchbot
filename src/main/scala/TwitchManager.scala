@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 import net.liftweb.json.parse
 import net.liftweb.json.JField
 import net.liftweb.json.JString
+import net.liftweb.json.JObject
 
 case object Start
 case class SuccessfullySubscribed(channel: Channel, stream: String)
@@ -69,11 +70,16 @@ class TwitchManager extends Actor with FSM[TwitchState, TwitchData] {
         println("url is" + url)
         val json = Source.fromURL(url + commaList).mkString
         val parsed = parse(json)
+        println(parsed)
 
         val streaming = for {
+          JField("broadcast_part", JObject(broadpart)) <- parsed
+
           JField("login", JString(login)) <- parsed
           JField("up_time", JString(date)) <- parsed
           JField("title", JString(title)) <- parsed
+
+          if (title != login)
         } yield (login.toString(), date.toString(), title.toString())
 
         println("Streaming: " + streaming)
