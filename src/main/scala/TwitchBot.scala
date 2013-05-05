@@ -35,7 +35,7 @@ object TwitchBot {
 
       validateInput(username, server, port, chan) match {
         case None =>
-          val bot = TwitchBot(List(Server(server, server, port getOrElse 6667, Map(chan -> Channel(chan, List.empty[String])), username)), file)
+          TwitchBot(List(Server(server, server, port getOrElse 6667, Map(chan -> Channel(chan, List.empty[String])), username)), file)
         case Some(str) =>
           println(str + ", exitting.")
           System.exit(1)
@@ -48,7 +48,7 @@ object TwitchBot {
 
   }
 
-  /** Returns a Some with an explanation string if invalid input, otherwise returns Null*/
+  /** Returns a Some with an explanation string if invalid input, otherwise returns None*/
   def validateInput(username: String, server: String, port: Option[Int], chan: String): Option[String] = {
     val validUsername = if (username.head.isLetter && username.forall(x => x.isLetter || x.isDigit)) None else Some("Invalid username format")
     val validPort = if (port.isDefined) None else Some("Invalid port")
