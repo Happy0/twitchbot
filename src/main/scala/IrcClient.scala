@@ -24,6 +24,7 @@ sealed trait IRCServerMessage
 case class ChannelMessage(user: String, channel: String, message: String) extends IRCServerMessage
 case class MalformedMesssage(explanation: String, msg: ChannelMessage) extends IRCServerMessage
 case class AddStream(username: String, msg: ChannelMessage) extends IRCServerMessage
+case class UnwatchStream(username: String, msg: ChannelMessage) extends IRCServerMessage
 
 case class PING(number: String) extends IRCServerMessage
 case object Registered extends IRCServerMessage
@@ -78,6 +79,27 @@ class IRCClient(server: Server, ircManager: ActorRef, twitchManager: ActorRef) e
         }
 
       stay using responsible.copy(messageQueue = newQueue)
+
+    case Event(UnwatchStream(streamName, msg), responsible: ResponsibleFor) =>
+      val channels = responsible.server.channels
+
+      channels.get(msg.channel).fold {
+        IRCClient.writeToChannel(responsible.messageQueue, msg.channel, "Unlikely error")
+        stay using responsible
+      } {
+
+        chan =>
+          chan.removeStream(streamName).fold {
+            val queue = IRCClient.writeToChannel(responsible.messageQueue, msg.channel, streamName + " is not followed")
+            stay using responsible.copy(messageQueue = queue)
+          } {
+            removed =>
+              val updated = channels.updated(msg.channel, removed)
+              val queue = IRCClient.writeToChannel(responsible.messageQueue, msg.channel, streamName + " is no longer followed")
+              twitchManager ! UnSubscribe(self, chan, streamName)
+              stay using responsible.copy(messageQueue = queue, server = server.copy(channels = updated))
+          }
+      }
 
     case Event(NotATwitchUser(channel, stream), responsible: ResponsibleFor) =>
       val queue = IRCClient.writeToChannel(responsible.messageQueue, channel.name, stream + " is not a twitch login.")
@@ -158,7 +180,7 @@ object IRCMessageParser {
   def ascii(bytes: ByteString): String = bytes.decodeString("US-ASCII").trim
 
   def parse(bytes: ByteString): IRCServerMessage = {
-    val line = ascii(bytes)
+    val line = ascii(bytes).toLowerCase()
 
     if (line.startsWith("PING :")) {
       val number = line.drop(6)
@@ -184,6 +206,9 @@ object IRCMessageParser {
             val twitchName = chanMsg.message.drop(7).takeWhile(c => c != ' ') // @TODO: Check for invalid format
             AddStream(twitchName, chanMsg)
 
+          } else if (chanMsg.message.startsWith("!unwatch")) {
+            val twitchName = chanMsg.message.drop(9).takeWhile(c => c != ' ')
+            UnwatchStream(twitchName, chanMsg)
           } else {
             NoInterest
           }
