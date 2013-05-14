@@ -18,6 +18,7 @@ case class UnSuccessfulSubscribe(channel: Channel, stream: String)
 
 case class Subscribe(actor: ActorRef, channel: Channel, stream: String)
 case class UnSubscribe(actor: ActorRef, channel: Channel, stream: String)
+case class CurrentlyStreaming(actor: ActorRef, channe: Channel)
 private case object PollTwitch
 
 sealed trait TwitchState

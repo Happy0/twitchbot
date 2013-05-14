@@ -21,12 +21,11 @@ object TwitchBot {
   //@TODO: Check for invalid hostname/IP. Persist the configuration.
 
   def main(args: Array[String]) {
+    
     val fileDir = new File(getClass.getClassLoader.getResource("config/").getPath.toString())
     val file = new File(fileDir + "config.txt")
-
-    if (true || !file.exists() || args.length > 0) {
-      println("config file doesn't exist, creating config file")
-      file.createNewFile()
+    
+    if (true) {
 
       val username = args.find(str => str.startsWith("nick=")).fold("TwitchBotx0rz")(a => a.drop(5))
       val server = args.find(str => str.startsWith("server=")).fold("irc.quakenet.org")(a => a.drop(7))
